@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+record SimulationDatasetId(int simulation_id, int dataset_id){}
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DatabaseTests {
@@ -236,7 +237,7 @@ class DatabaseTests {
     }
   }
 
-  int insertSimulation(int simulationTemplateId, int planId) throws SQLException {
+  int insertSimulationWithTemplateId(int simulationTemplateId, int planId) throws SQLException {
     try (final var statement = connection.createStatement()) {
       final var res = statement
           .executeQuery(
@@ -245,6 +246,21 @@ class DatabaseTests {
                   VALUES ('%s', '%s', '{}')
                   RETURNING id;"""
                   .formatted(simulationTemplateId, planId)
+          );
+      res.next();
+      return res.getInt("id");
+    }
+  }
+
+  int insertSimulationWithoutTemplateId(int planId) throws SQLException {
+    try (final var statement = connection.createStatement()) {
+      final var res = statement
+          .executeQuery(
+              """
+                  INSERT INTO simulation (plan_id, arguments)
+                  VALUES ('%s', '{}')
+                  RETURNING id;"""
+                  .formatted(planId)
           );
       res.next();
       return res.getInt("id");
@@ -310,14 +326,41 @@ class DatabaseTests {
     }
   }
 
+  SimulationDatasetId insertSimulationDataset(final int simulationId, final int datasetId) throws SQLException {
+    try (final var statement = connection.createStatement()) {
+      final var res = statement
+          .executeQuery(
+              """
+                  INSERT INTO simulation_dataset (simulation_id, dataset_id, offset_from_plan_start)
+                  VALUES ('%s', '%s', '0')
+                  RETURNING simulation_id, dataset_id;"""
+                  .formatted(simulationId, datasetId)
+          );
+      res.next();
+      return new SimulationDatasetId(res.getInt("simulation_id"), res.getInt("dataset_id"));
+    }
+  }
+
+  void clearSimulationDatasets() throws SQLException {
+    try (final var statement = connection.createStatement()) {
+      statement
+          .executeUpdate(
+              """
+                  TRUNCATE simulation_dataset CASCADE;"""
+          );
+    }
+  }
+
   int fileId;
   int missionModelId;
   int planId;
   int activityId;
   int simulationTemplateId;
-  int simulationId;
+  int simulationWithTemplateId;
+  int simulationWithoutTemplateId;
   int datasetId;
   Pair<Integer, Integer> planDatasetId;
+  SimulationDatasetId simulationDatasetId;
 
   @BeforeEach
   void beforeEach() throws SQLException {
@@ -326,9 +369,11 @@ class DatabaseTests {
     planId = insertPlan(missionModelId);
     activityId = insertActivity(planId);
     simulationTemplateId = insertSimulationTemplate(missionModelId);
-    simulationId = insertSimulation(simulationTemplateId, planId);
+    simulationWithTemplateId = insertSimulationWithTemplateId(simulationTemplateId, planId);
+    simulationWithoutTemplateId = insertSimulationWithoutTemplateId(planId);
     datasetId = insertDataset();
     planDatasetId = insertPlanDataset(planId);
+    simulationDatasetId = insertSimulationDataset(simulationWithTemplateId, datasetId);
   }
 
   @AfterEach
@@ -341,6 +386,7 @@ class DatabaseTests {
     clearSimulations();
     clearDatasets();
     clearPlanDatasets();
+    clearSimulationDatasets();
   }
 
   @Nested
@@ -613,7 +659,7 @@ class DatabaseTests {
                                            """
                                                SELECT revision FROM simulation
                                                WHERE id = %s;"""
-                                               .formatted(simulationId)
+                                               .formatted(simulationWithTemplateId)
                                        );
       initialRes.next();
       final var initialRevision = initialRes.getInt("revision");
@@ -624,7 +670,7 @@ class DatabaseTests {
                     """
                         UPDATE simulation SET arguments = '{}'
                         WHERE id = %s;"""
-                        .formatted(simulationId)
+                        .formatted(simulationWithTemplateId)
                 );
 
       final var updatedRes = connection.createStatement()
@@ -632,7 +678,7 @@ class DatabaseTests {
                                            """
                                                SELECT revision FROM simulation
                                                WHERE id = %s;"""
-                                               .formatted(simulationId)
+                                               .formatted(simulationWithTemplateId)
                                        );
       updatedRes.next();
       final var updatedRevision = updatedRes.getInt("revision");
@@ -953,6 +999,71 @@ class DatabaseTests {
         ) {
           res.next();
           assertFalse(res.getBoolean("exists"));
+        }
+      }
+    }
+  }
+
+  @Nested
+  class SimulationDatasetTriggers {
+    @Test
+    void shouldInitializeDatasetOnInsertWithTemplate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        try (final var res = statement.executeQuery(
+            """
+                SELECT plan_revision, model_revision, simulation_revision, simulation_template_revision
+                FROM simulation_dataset
+                WHERE simulation_id = %s AND dataset_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id(), simulationDatasetId.dataset_id())
+        )) {
+          res.next();
+          assertEquals(1, res.getInt("plan_revision"));
+          assertEquals(0, res.getInt("model_revision"));
+          assertEquals(0, res.getInt("simulation_revision"));
+          assertEquals(0, res.getInt("simulation_template_revision"));
+        }
+      }
+    }
+
+    @Test
+    void shouldInitializeDatasetOnInsertWithoutTemplate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        final var simulationDatasetWithoutTemplateId = insertSimulationDataset(simulationWithoutTemplateId, datasetId);
+        try (final var res = statement.executeQuery(
+            """
+                SELECT plan_revision, model_revision, simulation_revision, simulation_template_revision
+                FROM simulation_dataset
+                WHERE simulation_id = %s AND dataset_id = %s;"""
+                .formatted(simulationDatasetWithoutTemplateId.simulation_id(), simulationDatasetWithoutTemplateId.dataset_id())
+        )) {
+          res.next();
+          assertEquals(1, res.getInt("plan_revision"));
+          assertEquals(0, res.getInt("model_revision"));
+          assertEquals(0, res.getInt("simulation_revision"));
+          res.getInt("simulation_template_revision");
+          assertTrue(res.wasNull());
+        }
+      }
+    }
+
+    @Test
+    void shouldDeleteDatasetOnSimulationDatasetDelete() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        statement.executeUpdate(
+            """
+                DELETE FROM simulation_dataset
+                WHERE simulation_id = %s AND dataset_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id(), simulationDatasetId.dataset_id())
+        );
+        try (final var res = statement.executeQuery(
+            """
+                SELECT COUNT(*)
+                FROM dataset
+                WHERE id = %s;"""
+                .formatted(simulationDatasetId.dataset_id())
+        )) {
+          res.next();
+          assertEquals(0, res.getInt("count"));
         }
       }
     }
