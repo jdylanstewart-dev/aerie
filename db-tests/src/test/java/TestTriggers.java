@@ -629,7 +629,8 @@ class DatabaseTests {
       connection.createStatement()
                 .executeUpdate(
                     """
-                        UPDATE simulation_template SET description = 'test-description-updated'
+                        UPDATE simulation_template
+                        SET description = 'test-description-updated'
                         WHERE id = %s;"""
                         .formatted(simulationTemplateId)
                 );
@@ -1064,6 +1065,106 @@ class DatabaseTests {
         )) {
           res.next();
           assertEquals(0, res.getInt("count"));
+        }
+      }
+    }
+
+    @Test
+    void shouldCancelOnMissionModelUpdate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        statement
+            .executeUpdate(
+                """
+                    UPDATE mission_model
+                    SET name = 'updated-name-%s'
+                    WHERE id = %s;"""
+                    .formatted(UUID.randomUUID().toString(), missionModelId)
+            );
+
+        try (final var res = statement.executeQuery(
+            """
+                SELECT canceled
+                FROM simulation_dataset
+                WHERE simulation_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id())
+        )) {
+          res.next();
+          assertTrue(res.getBoolean("canceled"));
+        }
+      }
+    }
+
+    @Test
+    void shouldCancelOnPlanUpdate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        statement
+            .executeUpdate(
+                """
+                    UPDATE plan
+                    SET name = 'test-plan-updated-%s'
+                    WHERE id = %s;"""
+                    .formatted(UUID.randomUUID().toString(), planId)
+            );
+
+        try (final var res = statement.executeQuery(
+            """
+                SELECT canceled
+                FROM simulation_dataset
+                WHERE simulation_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id())
+        )) {
+          res.next();
+          assertTrue(res.getBoolean("canceled"));
+        }
+      }
+    }
+
+    @Test
+    void shouldCancelOnSimulationUpdate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        statement
+            .executeUpdate(
+                """
+                    UPDATE simulation
+                    SET arguments = '{}'
+                    WHERE id = %s;"""
+                    .formatted(simulationWithTemplateId)
+            );
+
+        try (final var res = statement.executeQuery(
+            """
+                SELECT canceled
+                FROM simulation_dataset
+                WHERE simulation_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id())
+        )) {
+          res.next();
+          assertTrue(res.getBoolean("canceled"));
+        }
+      }
+    }
+
+    @Test
+    void shouldCancelOnSimulationTemplateUpdate() throws SQLException {
+      try (final var statement = connection.createStatement()) {
+        statement
+            .executeUpdate(
+                """
+                    UPDATE simulation_template
+                    SET description = 'test-description-updated'
+                    WHERE id = %s;"""
+                    .formatted(simulationTemplateId)
+            );
+
+        try (final var res = statement.executeQuery(
+            """
+                SELECT canceled
+                FROM simulation_dataset
+                WHERE simulation_id = %s;"""
+                .formatted(simulationDatasetId.simulation_id())
+        )) {
+          res.next();
+          assertTrue(res.getBoolean("canceled"));
         }
       }
     }
