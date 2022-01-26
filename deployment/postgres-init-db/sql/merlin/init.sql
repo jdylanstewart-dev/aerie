@@ -24,6 +24,9 @@ begin;
   \ir tables/scheduling_spec_rules.sql
   \ir tables/scheduling_request.sql
   \ir tables/scheduling_analysis.sql
+  \ir tables/scheduling_rule_analysis.sql
+  \ir tables/scheduling_rule_analysis_created_activities.sql
+  \ir tables/scheduling_rule_analysis_satisfying_activities.sql
 
   -- Uploaded datasets (or datasets generated from simulation).
   \ir tables/dataset.sql
