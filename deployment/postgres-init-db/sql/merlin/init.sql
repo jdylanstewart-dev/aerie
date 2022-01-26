@@ -20,6 +20,8 @@ begin;
   \ir tables/scheduling_rule.sql
   \ir tables/scheduling_template.sql
   \ir tables/scheduling_template_rules.sql
+  \ir tables/scheduling_spec.sql
+  \ir tables/scheduling_spec_rules.sql
 
   -- Uploaded datasets (or datasets generated from simulation).
   \ir tables/dataset.sql
