@@ -16,6 +16,9 @@ begin;
   \ir tables/simulation_template.sql
   \ir tables/simulation.sql
 
+  -- Scheduling intents
+  \ir tables/scheduling_rule.sql
+
   -- Uploaded datasets (or datasets generated from simulation).
   \ir tables/dataset.sql
   \ir tables/span.sql
