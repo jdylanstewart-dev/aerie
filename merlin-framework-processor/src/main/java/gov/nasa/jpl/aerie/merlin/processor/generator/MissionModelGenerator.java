@@ -290,7 +290,13 @@ public record MissionModelGenerator(Elements elementUtils, Types typeUtils, Mess
                                         .builder()
                                         .addStatement("result.put(\"$L\", $L)",
                                                       activityTypeRecord.name(),
-                                                      "uncontrollable"))
+                                                      activityTypeRecord
+                                                          .effectModel()
+                                                          .flatMap(EffectModelRecord::durationParameter)
+                                                          .map(durationParameter -> CodeBlock.of("new $T(\"$L\")",
+                                                                                                 DurationType.Controllable.class,
+                                                                                                 durationParameter))
+                                                          .orElse(CodeBlock.of("uncontrollable"))))
                             .reduce((x, y) -> x.add("$L", y.build()))
                             .orElse(CodeBlock.builder()).build())
                     .addStatement("return result")
