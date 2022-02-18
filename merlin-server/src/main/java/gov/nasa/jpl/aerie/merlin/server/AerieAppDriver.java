@@ -46,7 +46,14 @@ public final class AerieAppDriver {
     final var simulationAgent = ThreadedSimulationAgent.spawn(
         "simulation-agent",
         new SynchronousSimulationAgent(planController, missionModelController));
-    final var simulationController = new CachedSimulationService(stores.results(), simulationAgent);
+    final CachedSimulationService simulationController;
+
+    if (configuration.useWorkers()) {
+      simulationController = new CachedSimulationService(stores.results(), simulationAgent);
+    } else {
+      simulationController = new CachedSimulationService(stores.results(), simulationAgent);
+    }
+
     final var simulationAction = new GetSimulationResultsAction(planController, missionModelController, simulationController);
     final var merlinBindings = new MerlinBindings(missionModelController, planController, simulationAction);
 
@@ -108,6 +115,7 @@ public final class AerieAppDriver {
     return new AppConfiguration(
         Integer.parseInt(getEnv("MERLIN_PORT","27183")),
         Boolean.parseBoolean(getEnv("MERLIN_LOGGING","true")) ? JavalinLoggingState.Enabled : JavalinLoggingState.Disabled,
+        Boolean.parseBoolean(getEnv("MERLIN_WORKERS_COUNT","true")),
         Path.of(getEnv("MERLIN_LOCAL_STORE","/usr/src/app/merlin_file_store")),
         new PostgresStore(getEnv("MERLIN_DB_TYPE","postgres"),
                           getEnv("MERLIN_DB_USER","aerie"),

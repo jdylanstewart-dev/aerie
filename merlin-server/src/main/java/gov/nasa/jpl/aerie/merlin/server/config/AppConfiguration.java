@@ -2,11 +2,11 @@ package gov.nasa.jpl.aerie.merlin.server.config;
 
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.Optional;
 
 public record AppConfiguration (
     int httpPort,
     JavalinLoggingState javalinLogging,
+    boolean useWorkers,
     Path merlinFileStore,
     Store store
 ) {
