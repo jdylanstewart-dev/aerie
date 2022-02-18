@@ -4,6 +4,7 @@ create table scheduling_request (
 
   status text not null default 'incomplete',
   failure_reason text null,
+  canceled boolean not null default false,
 
   spec_revision integer not null,
 
