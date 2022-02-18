@@ -1,0 +1,129 @@
+version: "3.7"
+services:
+  aerie_gateway:
+    depends_on: ["postgres"]
+    environment:
+      AUTH_TYPE: cam
+      AUTH_URL: https://atb-ocio-12b.jpl.nasa.gov:8443/cam-api
+      GQL_API_URL: http://localhost:8080/v1/graphql
+      PORT: 9000
+      POSTGRES_AERIE_MERLIN_DB: aerie_merlin
+      POSTGRES_AERIE_SCHED_DB: aerie_sched
+      POSTGRES_AERIE_UI_DB: aerie_ui
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: aerie
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: aerie
+    image: "ghcr.io/nasa-ammos/aerie-gateway:develop"
+    ports: ["9000:9000"]
+    restart: always
+    volumes:
+      - aerie_file_store:/app/files
+  aerie_ui:
+    depends_on: ["postgres"]
+    environment:
+      AUTH_TYPE: cam
+      GATEWAY_CLIENT_URL: http://localhost:9000
+      GATEWAY_SERVER_URL: http://aerie_gateway:9000
+      HASURA_CLIENT_URL: http://localhost:8080/v1/graphql
+      HASURA_SERVER_URL: http://hasura:8080/v1/graphql
+      SCHEDULER_CLIENT_URL: http://localhost:27193
+      SCHEDULER_SERVER_URL: http://scheduler:27193
+    image: "artifactory.jpl.nasa.gov:16001/gov/nasa/jpl/aerie/aerie-ui:develop"
+    ports: ["80:80"]
+    restart: always
+  hasura:
+    depends_on: ["postgres"]
+    environment:
+      AERIE_MERLIN_DATABASE_URL: postgres://aerie:aerie@postgres:5432/aerie_merlin
+      AERIE_SCHED_DATABASE_URL: postgres://aerie:aerie@postgres:5432/aerie_sched
+      AERIE_UI_DATABASE_URL: postgres://aerie:aerie@postgres:5432/aerie_ui
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://aerie:aerie@postgres:5432/aerie_hasura
+      HASURA_GRAPHQL_METADATA_DIR: /hasura-metadata
+    image: "hasura/graphql-engine:v2.0.10.cli-migrations-v3"
+    ports: ["8080:8080"]
+    restart: always
+    volumes:
+      - ./deployment/hasura/metadata:/hasura-metadata
+  merlin:
+    build:
+      context: ./merlin-server
+      dockerfile: Dockerfile
+    depends_on: ["postgres"]
+    environment:
+      MERLIN_PORT: 27183
+      MERLIN_LOCAL_STORE: /usr/src/app/merlin_file_store
+      MERLIN_LOGGING: "true"
+      MERLIN_DB_SERVER: "postgres"
+      MERLIN_DB_PORT: 5432
+      MERLIN_DB_USER: "aerie"
+      MERLIN_DB_PASSWORD: "aerie"
+      MERLIN_DB: "aerie_merlin"
+    ports: ["27183:27183"]
+    restart: always
+    volumes:
+      - aerie_file_store:/usr/src/app/merlin_file_store
+  postgres:
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    image: postgres:14.1
+    ports: ["5432:5432"]
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/postgres-init-db:/docker-entrypoint-initdb.d
+  scheduler:
+    build:
+      context: ./scheduler-server
+      dockerfile: Dockerfile
+    depends_on: ["postgres", "merlin"]
+    environment:
+      MERLIN_GRAPHQL_URL: http://hasura:8080/v1/graphql
+      MERLIN_LOCAL_STORE: /usr/src/app/merlin_file_store
+      SCHED_DB: "aerie_sched"
+      SCHED_DB_PASSWORD: "aerie"
+      SCHED_DB_PORT: 5432
+      SCHED_DB_SERVER: "postgres"
+      SCHED_DB_USER: "aerie"
+      SCHED_LOCAL_STORE: /usr/src/app/sched_file_store
+      SCHED_LOGGING: "true"
+      SCHED_OUTPUT_MODE: UpdateInputPlanWithNewActivities
+      SCHED_PORT: 27193
+      SCHED_RULES_JAR: /usr/src/app/merlin_file_store/sched_rules.jar
+    ports: ["27193:27193"]
+    restart: always
+    volumes:
+      - aerie_file_store:/usr/src/app/merlin_file_store
+  merlin_worker:
+    # image: "${AERIE_DOCKER_URL}/merlin:${DOCKER_TAG}"
+    build:
+      context: ./merlin-worker
+      dockerfile: Dockerfile
+    depends_on: ["postgres"]
+    environment:
+      MERLIN_WORKER_PORT: 27185
+      MERLIN_WORKER_LOCAL_STORE: /usr/src/app/merlin_file_store
+      MERLIN_WORKER_SANDBOX_STORE: /usr/src/app/merlin_file_sandbox
+      MERLIN_WORKER_DB_SERVER: "postgres"
+      MERLIN_WORKER_DB_PORT: 5432
+      MERLIN_WORKER_DB_USER: "aerie"
+      MERLIN_WORKER_DB_PASSWORD: "aerie"
+      MERLIN_WORKER_DB: "aerie_merlin"
+    ports: ["27185:27185", "5005:5005"]
+    restart: always
+    volumes:
+      - aerie_file_store:/usr/src/app/merlin_file_store:ro
+      - file_sandbox:/usr/src/app/merlin_file_sandbox
+#    environment:
+#      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
+
+volumes:
+  aerie_file_store:
+  mission_file_store:
+  file_sandbox:
+  postgres_data:
