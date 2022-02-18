@@ -211,3 +211,28 @@ create trigger cancel_on_simulation_template_update_trigger
 exception
   when duplicate_object then null;
 end $$;
+
+-- Simulation dataset NOTIFY triggers
+-- These triggers NOTIFY LISTEN(ing) merlin worker clients of pending simulation requests
+create or replace function notify_simulation_workers ()
+returns trigger
+security definer
+language plpgsql as $$
+begin
+perform (
+  with payload(dataset_id, plan_revision, model_revision) as
+  (
+    select NEW.dataset_id, NEW.plan_revision, NEW.model_revision
+  )
+  select pg_notify('simulation_notification', row_to_json(payload)::text)
+  from payload
+  );
+  return null;
+end$$;
+
+do $$ begin
+create trigger notify_simulation_workers
+  after insert on simulation_dataset
+  for each row
+  execute procedure notify_simulation_workers();
+end $$;
