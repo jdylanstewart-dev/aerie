@@ -14,7 +14,7 @@ create table simulation_dataset (
   dataset_revision integer null,
 
   -- Simulation state
-  state text not null default 'incomplete',
+  state text not null default 'pending',
   reason text null,
   canceled boolean not null default false,
 
