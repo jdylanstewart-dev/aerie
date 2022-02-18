@@ -1,6 +1,5 @@
 package gov.nasa.jpl.aerie.scheduler.server.remotes.postgres;
 
-import gov.nasa.jpl.aerie.scheduler.server.models.SpecificationId;
 import org.intellij.lang.annotations.Language;
 
 import java.sql.Connection;
