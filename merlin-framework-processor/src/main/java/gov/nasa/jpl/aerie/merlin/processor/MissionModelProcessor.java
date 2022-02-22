@@ -90,6 +90,7 @@ public final class MissionModelProcessor implements Processor {
 
         generatedFiles.addAll(List.of(
             missionModelGen.generateMissionModelFactory(missionModelRecord),
+            missionModelGen.generateSchedulerModel(missionModelRecord),
             missionModelGen.generateActivityActions(missionModelRecord),
             missionModelGen.generateActivityTypes(missionModelRecord)
         ));
