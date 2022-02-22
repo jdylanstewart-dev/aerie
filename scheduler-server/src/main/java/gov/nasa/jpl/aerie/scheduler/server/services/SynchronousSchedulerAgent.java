@@ -2,7 +2,10 @@ package gov.nasa.jpl.aerie.scheduler.server.services;
 
 import gov.nasa.jpl.aerie.merlin.driver.ActivityInstanceId;
 import gov.nasa.jpl.aerie.merlin.driver.MissionModel;
+import gov.nasa.jpl.aerie.merlin.driver.MissionModelBuilder;
 import gov.nasa.jpl.aerie.merlin.driver.MissionModelLoader;
+import gov.nasa.jpl.aerie.merlin.protocol.model.SchedulerModel;
+import gov.nasa.jpl.aerie.merlin.protocol.model.SchedulerPlugin;
 import gov.nasa.jpl.aerie.merlin.protocol.types.SerializedValue;
 import gov.nasa.jpl.aerie.scheduler.ActivityInstance;
 import gov.nasa.jpl.aerie.scheduler.GlobalConstraint;
@@ -25,6 +28,7 @@ import gov.nasa.jpl.aerie.scheduler.server.models.GoalRecord;
 import gov.nasa.jpl.aerie.scheduler.server.models.PlanId;
 import gov.nasa.jpl.aerie.scheduler.server.models.PlanMetadata;
 import gov.nasa.jpl.aerie.scheduler.server.models.Specification;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -83,9 +87,11 @@ public record SynchronousSchedulerAgent(
       ensureRequestIsCurrent(request);
       ensurePlanRevisionMatch(specificationWithGoals,planMetadata.planRev());
       //create scheduler problem seeded with initial plan
-      final var mission = loadMissionModel(planMetadata);
+      final var missionModelSchedulerModelPair = loadMissionModel(planMetadata);
+      final var mission = missionModelSchedulerModelPair.getLeft();
+      final var schedulerModel = missionModelSchedulerModelPair.getRight();
       var planningHorizon = new PlanningHorizon(Time.fromInstant(specificationWithGoals.horizonStartTimestamp().toInstant()),Time.fromInstant(specificationWithGoals.horizonEndTimestamp().toInstant())) ;
-      final var problem = new Problem(mission, planningHorizon);
+      final var problem = new Problem(mission, planningHorizon, schedulerModel);
       //seed the problem with the initial plan contents
       problem.setInitialPlan(loadInitialPlan(planMetadata, problem));
 
@@ -136,7 +142,7 @@ public record SynchronousSchedulerAgent(
   private Specification loadSpecificationGoalsFromJAR(final Specification dbLoadedSpec, final PlanMetadata planMetadata)
   throws NoSuchPlanException, IOException, NoSuchGoalDefinitionException {
     final var missionModel = loadMissionModel(planMetadata);
-    final var jarGoals = loadGoals(missionModel);
+    final var jarGoals = loadGoals(missionModel.getLeft());
 
     final var loadedGoals = new ArrayList<GoalRecord>(dbLoadedSpec.goalsByPriority().size());
     for (final var dbGoal : dbLoadedSpec.goalsByPriority()) {
@@ -279,14 +285,18 @@ public record SynchronousSchedulerAgent(
    * @throws ResultsProtocolFailure when the mission model could not be loaded: eg jar file not found, declared
    *     version/name in jar does not match, or aerie filesystem could not be mounted
    */
-  private MissionModel<?> loadMissionModel(final PlanMetadata plan) {
+  private Pair<MissionModel<?>, SchedulerModel> loadMissionModel(final PlanMetadata plan) {
     try {
       final var missionConfig = SerializedValue.of(plan.modelConfiguration());
       final var modelJarPath = modelJarsDir.resolve(plan.modelPath());
 
-      final var aerieModel = MissionModelLoader.loadMissionModel(
-          missionConfig, modelJarPath, plan.modelName(), plan.modelVersion());
-      return aerieModel;
+      final var service = MissionModelLoader.loadMissionModelProvider(
+          modelJarPath,
+          plan.modelName(),
+          plan.modelVersion());
+      return Pair.of(
+          MissionModelLoader.loadMissionModel(missionConfig, service.getFactory(), new MissionModelBuilder()),
+          ((SchedulerPlugin) service).getSchedulerModel());
     } catch (MissionModelLoader.MissionModelLoadException e) {
       throw new ResultsProtocolFailure(e);
     }
